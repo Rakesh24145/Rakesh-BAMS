@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TALON Studio</title><link rel="stylesheet" href="/styles.css"></head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="logo"><div class="mark"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-9 4 6 3-4 6 7z"/></svg></div><div><b>TALON</b><small>Talent Intelligence Studio</small></div></div>
+    <div id="nav"></div>
+    <div class="sidefoot" id="sidefoot"></div>
+  </aside>
+  <section class="main">
+    <header class="top"><h1 id="title">Command Center</h1><span class="sp"></span>
+      <span class="live"><i></i> Live</span>
+      <label class="who">Acting as <select id="persona"></select></label>
+      <button class="btn" id="theme" title="Dark / light"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/></svg></button>
+      <button class="btn ai" id="askbtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg>Ask TALON</button>
+    </header>
+    <main class="content" id="content"></main>
+  </section>
+</div>
+<div class="veil" id="veil"></div>
+<aside class="drawer" id="drawer"></aside>
+<aside class="chat" id="chat">
+  <div class="ch"><div style="flex:1"><b>Ask TALON</b><small id="chatmode">Talent copilot</small></div><button class="btn sm" id="chatx" style="background:rgba(255,255,255,.2);color:#fff;border:0">Close</button></div>
+  <div class="msgs" id="msgs"></div><div class="sug" id="sug"></div>
+  <div class="cin"><input id="chatin" placeholder="Ask about candidates, risks, approvals, policy..."><button class="btn p" id="chatgo">Send</button></div>
+</aside>
+<div id="modal"></div><div class="toasts" id="toasts"></div>
+<script src="/app.js"></script>
+</body></html>

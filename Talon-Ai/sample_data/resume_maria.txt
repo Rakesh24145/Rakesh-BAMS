@@ -1,0 +1,7 @@
+Name: Maria Lopez
+Email: maria.lopez@example.com
+Summary: Recent graduate with 1 year of internship experience in marketing.
+Skills: Excel, HTML, CSS, communication, project management.
+Experience: Tracked campaign results in Excel spreadsheets, maintained a small
+website using HTML and CSS, and coordinated project tasks for the marketing team.
+Education: B.A. Marketing.

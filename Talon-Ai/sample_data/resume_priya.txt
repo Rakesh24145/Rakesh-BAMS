@@ -1,0 +1,8 @@
+Name: Priya Nair
+Email: priya.nair@example.com
+Summary: Data analyst with 6 years of experience in retail analytics.
+Skills: Python, pandas, SQL, PostgreSQL, Excel, statistics, hypothesis testing,
+Power BI, Tableau, data visualization, Git, data cleaning.
+Experience: Built automated reporting pipelines in Python and SQL, created Power BI
+dashboards for regional managers, and ran A/B tests using statistical analysis.
+Education: B.Sc. Statistics.

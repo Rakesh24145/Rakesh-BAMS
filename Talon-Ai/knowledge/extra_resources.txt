@@ -1,0 +1,4 @@
+EXTRA LEARNING RESOURCES (add your own lines in exactly this format)
+
+Learning resource for agile: Atlassian Agile Coach guides (free). Estimated 4 hours.
+Learning resource for project management: Google Project Management basics (free). Estimated 6 hours.

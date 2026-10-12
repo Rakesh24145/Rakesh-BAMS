@@ -1,0 +1,8 @@
+Name: Aisha Khan
+Email: aisha.khan@example.com
+Summary: Senior analyst with 8 years of experience in banking analytics.
+Skills: Python, SQL, PostgreSQL, Excel, statistics, hypothesis testing, Power BI, Tableau,
+data visualization, Git, ETL, agile, project management, communication.
+Experience: Led a team that automated risk reporting with Python and SQL, built Power BI
+dashboards for executives and ran statistical analysis on credit data.
+Education: M.Sc. Applied Statistics.

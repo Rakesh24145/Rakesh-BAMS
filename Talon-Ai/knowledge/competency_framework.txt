@@ -1,0 +1,20 @@
+COMPETENCY FRAMEWORK
+
+Programming covers writing and reading code in languages such as Python, Java and
+JavaScript, plus REST APIs and web basics. A candidate is proficient when they can
+solve small problems without help and write readable code.
+
+Data Engineering covers SQL, ETL pipelines, pandas and data cleaning. A candidate is
+proficient when they can join tables, clean messy data and automate a repeatable
+data flow.
+
+Analytics covers Excel, Power BI, Tableau, statistics, data visualization and machine
+learning. A candidate is proficient when they can answer a business question with
+data and explain the result clearly.
+
+Cloud covers Azure and AWS fundamentals. Engineering Practice covers Git, Docker,
+Kubernetes and Linux. Professional Skills covers communication, project management
+and agile ways of working.
+
+Proficiency levels: below 50 percent is beginner, 50 to 69 percent is developing,
+70 to 84 percent is proficient, 85 percent and above is advanced.

@@ -1,0 +1,9 @@
+LEARNING PATH GUIDANCE
+
+Learn foundations first. Excel, SQL, Python and statistics come before machine
+learning, Docker, Kubernetes and cloud topics.
+
+Plan about five hours of study per week. Prefer one skill at a time and finish a
+small project for each skill before starting the next.
+
+Required skills for the job are always planned before nice-to-have skills.

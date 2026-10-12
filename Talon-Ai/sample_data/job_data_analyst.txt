@@ -1,0 +1,6 @@
+Data Analyst
+We are looking for a Data Analyst to turn business data into clear insights.
+Required skills: Python, SQL, Excel, Statistics.
+Nice to have: Power BI, data visualization, Git.
+You will clean data, build dashboards, run analyses and present findings to
+stakeholders. Two or more years of experience is preferred.

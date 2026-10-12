@@ -1,0 +1,8 @@
+Name: Sofia Rossi
+Email: sofia.rossi@example.com
+Summary: Data scientist with 5 years of experience in machine learning for telecom.
+Skills: Python, pandas, SQL, machine learning, scikit-learn, statistics, Tableau, Git,
+data cleaning, Docker, communication.
+Experience: Built churn prediction models in Python, wrote SQL pipelines for feature
+tables, and presented model results to business stakeholders. Used Excel for quick checks.
+Education: M.Sc. Data Science.

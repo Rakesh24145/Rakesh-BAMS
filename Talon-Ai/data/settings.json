@@ -1,0 +1,12 @@
+{
+  "provider": "openai",
+  "ollama_url": "http://localhost:11434",
+  "ollama_model": "qwen2.5:7b",
+  "embed_model": "nomic-embed-text",
+  "github_token": "",
+  "github_model": "openai/gpt-4.1-mini",
+  "openai_base": "https://api.groq.com/openai/v1",
+  "openai_key": "",
+  "openai_model": "llama-3.1-8b-instant",
+  "demo_pace": 0.5
+}

@@ -1,0 +1,18 @@
+RESPONSIBLE AI HIRING POLICY
+
+Rule 1. AI never makes the final hiring decision. A named human approver must approve
+every hiring, deployment and upskilling recommendation.
+
+Rule 2. If any integrity flag was raised during the assessment, the hiring
+recommendation must be put on HOLD until HR has reviewed and cleared the flag.
+
+Rule 3. A candidate who is Ready may be recommended for hire. A candidate who is
+Conditionally ready may be recommended for hire only together with an upskilling
+plan. A candidate who is Not ready must not be recommended for hire now.
+
+Rule 4. Recommendations must be based on evidence: resume match, learning progress,
+assessment results and integrity checks. Never use name, gender, age, nationality or
+photo as evidence.
+
+Rule 5. Explain every recommendation in plain language so the candidate and the
+approver can understand it.

@@ -1,0 +1,7 @@
+Name: Daniel Okafor
+Email: daniel.okafor@example.com
+Summary: Junior analyst with 2 years of experience in supply chain reporting.
+Skills: SQL, Excel, Power BI, data visualization, basic statistics.
+Experience: Maintained weekly Excel and Power BI reports, wrote SQL queries to extract
+shipment data and supported the planning team with dashboards.
+Education: B.Eng. Industrial Engineering.

@@ -1,0 +1,7 @@
+Name: Arjun Mehta
+Email: arjun.mehta@example.com
+Summary: Business analyst with 3 years of experience in finance operations.
+Skills: SQL, MySQL, Excel, Power BI, basic Python, communication.
+Experience: Wrote SQL queries for month-end reporting, built Excel models and
+Power BI dashboards, and presented results to finance leadership every quarter.
+Education: B.Com with analytics certification.
