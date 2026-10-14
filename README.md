@@ -1,2 +1,0 @@
-# Rakesh-BAMS
-Hackathon
