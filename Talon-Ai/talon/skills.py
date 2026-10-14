@@ -64,7 +64,7 @@ def extract_skills(text: str) -> list:
 
 
 def extract_years(text: str) -> int:
-    nums = [int(n) for n in re.findall(r"(\d{1,2})\+?\s*(?:years|yrs)", (text or "").lower())]
+    nums = [int(n) for n in re.findall(r"(\d{1,2})\+?\s*(?:years?|yrs?)", (text or "").lower())]
     return max(nums) if nums else 0
 
 

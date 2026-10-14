@@ -6,7 +6,7 @@ from datetime import datetime
 from . import db, observability, orchestrator as orch, workflow
 from .agents import AGENTS
 
-PHASES = ["Sourcing", "Onboarding", "Learning", "Assessment", "Evaluation", "Decision", "Completed"]
+ALL_PHASES = ["Sourcing", "Onboarding", "Learning", "Assessment", "Evaluation", "Decision", "Completed"]
 PHASE_OF = {"ORIGIN": "Sourcing", "GENESIS": "Onboarding", "ATHENA": "Learning",
             "LEARNING": "Learning", "NOVA": "Learning", "APEX": "Assessment",
             "ASSESSMENT": "Assessment", "SENTINEL": "Assessment", "TITAN": "Assessment",
@@ -14,6 +14,16 @@ PHASE_OF = {"ORIGIN": "Sourcing", "GENESIS": "Onboarding", "ATHENA": "Learning",
             "DONE": "Completed", "REJECTED": "Completed"}
 STEP_TITLE = {"LEARNING": "Candidate logs learning progress",
               "ASSESSMENT": "Candidate takes the assessment"}
+
+
+def phases() -> list:
+    used = {PHASE_OF[i] for i, _ in orch.PIPELINE}
+    return [p for p in ALL_PHASES if p in used or p == "Completed"]
+
+
+def _ready(cid: int) -> dict:
+    """Readiness from PRISM (full mode) or derived by NORTHSTAR (lite mode)."""
+    return db.memory_get(cid, "PRISM", "readiness") or db.memory_get(cid, "NORTHSTAR", "readiness") or {}
 
 
 def _job(job_id):
@@ -26,7 +36,7 @@ def _job(job_id):
 def candidate_row(c: dict) -> dict:
     cid = c["id"]
     st = workflow.status(cid)
-    ready = db.memory_get(cid, "PRISM", "readiness", {})
+    ready = _ready(cid)
     dec = db.memory_get(cid, "ORCHESTRATOR", "decision", {})
     flags = db.memory_get(cid, "SENTINEL", "compliance_log", {}).get("violations", [])
     rec = db.memory_get(cid, "NORTHSTAR", "recommendation", {})
@@ -46,7 +56,7 @@ def kpis() -> dict:
     rows = pool()
     scores = [r["readiness"] for r in rows if r["readiness"] is not None]
     pend = db.q("SELECT role, COUNT(*) n FROM approvals WHERE status='pending' GROUP BY role")
-    funnel = {p: 0 for p in PHASES}
+    funnel = {p: 0 for p in phases()}
     for r in rows:
         funnel[r["phase"]] += 1
     levels = {"Ready": 0, "Conditionally ready": 0, "Not ready": 0}
@@ -112,17 +122,19 @@ def case_view(cid: int) -> dict:
             if sid in ("LEARNING", "NOVA") and not plan:
                 state = "skipped"
         elif sid == stage:
-            state = "waiting" if st["waiting"] else ("running" if st["running"] else "current")
+            state = ("error" if (st["waiting"] or {}).get("type") == "error"
+                     else "waiting" if st["waiting"] else ("running" if st["running"] else "current"))
         else:
             state = "pending"
         title = AGENTS[sid].title if sid in AGENTS else STEP_TITLE[sid]
         steps.append({"id": sid, "title": title, "type": typ, "state": state})
         if typ == "agent":
             trace = db.memory_get(cid, sid, "trace", [])
+            error = db.memory_get(cid, sid, "execution_error")
             ap = db.q("SELECT id, role, status, comment, decided_by, decided, summary "
                       "FROM approvals WHERE candidate_id=? AND agent=? ORDER BY id", (cid, sid))
             agents.append({"id": sid, "title": title, "goal": AGENTS[sid].goal,
-                           "state": state, "summary": (res or {}).get("summary", ""),
+                           "state": state, "summary": error["message"] if error else (res or {}).get("summary", ""),
                            "used_llm": (res or {}).get("used_llm", False),
                            "data": (res or {}).get("data", {}), "trace": trace,
                            "sources": _sources(trace), "approvals": ap})
@@ -139,8 +151,8 @@ def case_view(cid: int) -> dict:
         "plan": plan, "learning": db.memory_get(cid, "NOVA", "completion_records"),
         "scores": db.memory_get(cid, "TITAN", "scores"),
         "integrity": db.memory_get(cid, "SENTINEL", "compliance_log"),
-        "readiness": db.memory_get(cid, "PRISM", "readiness"),
-        "competency": db.memory_get(cid, "PRISM", "competency_mapping", {}),
+        "readiness": _ready(cid) or None,
+        "competency": db.memory_get(cid, "PRISM", "competency_mapping", {}) or db.memory_get(cid, "NORTHSTAR", "competency", {}),
         "recommendation": db.memory_get(cid, "NORTHSTAR", "recommendation"),
         "decision": db.memory_get(cid, "ORCHESTRATOR", "decision"),
         "report": db.memory_get(cid, "OMNIVIEW", "executive_report"),

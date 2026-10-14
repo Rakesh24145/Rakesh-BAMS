@@ -9,7 +9,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from . import (config, copilot, db, llm, observability, orchestrator as orch, rag, reports,
+from . import (config, copilot, db, demo, llm, observability, orchestrator as orch, rag, reports,
                resume_io, samples, settings, views, workflow)
 from .agents import AGENTS
 
@@ -83,9 +83,18 @@ class Handler(BaseHTTPRequestHandler):
     # ---------------- API ----------------
     def _api(self, method, p, qs):
         m = re.match
+        if p == "/demo/offline" and method == "POST":
+            if config.OFFLINE_DEMO:
+                return self._json({"error": "You are already in the isolated offline showcase."}, 400)
+            try:
+                return self._json(demo.launch(orch.MODE))
+            except RuntimeError as exc:
+                observability.log(None, "DEMO", "run_error", str(exc))
+                return self._json({"error": str(exc)}, 503)
         if p == "/state":
             return self._json({"kpis": views.kpis(), "pool": views.pool(), "ai": llm.status(),
-                               "impact": views.impact(), "roles": orch.ROLES, "phases": views.PHASES,
+                               "offline_demo": config.OFFLINE_DEMO,
+                               "impact": views.impact(), "roles": orch.ROLES, "phases": views.phases(), "mode": orch.MODE,
                                "jobs": orch.list_jobs()})
         if p == "/events":
             return self._sse()
@@ -101,12 +110,14 @@ class Handler(BaseHTTPRequestHandler):
                 counts[r["stage"]] = counts.get(r["stage"], 0) + 1
             nodes = [{"id": i, "title": t, "type": ty, "count": counts.get(i, 0),
                       "goal": AGENTS[i].goal if i in AGENTS else "A person acts here"}
-                     for i, t, ty in workflow.NODES]
+                     for i, t, ty in workflow.nodes()]
             return self._json({"nodes": nodes, "done": counts.get("DONE", 0),
                                "running": [c for c in [r["id"] for r in views.pool()] if workflow.is_running(c)]})
         if p == "/settings" and method == "GET":
             return self._json({"settings": settings.public(), "ai": llm.status()})
         if p == "/settings" and method == "POST":
+            if config.OFFLINE_DEMO:
+                return self._json({"error": "Offline showcase settings are fixed; configure AI in the main window."}, 400)
             settings.save(self._body())
             llm._state["ping_ts"] = 0
             rag.ensure_ready()
@@ -118,7 +129,12 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/chat" and method == "POST":
             msg = self._body().get("message", "")
             observability.log(None, "ASK_TALON", "chat", msg)
-            return self._json(copilot.ask(msg))
+            from .agent_runtime import AgentExecutionError
+            try:
+                return self._json(copilot.ask(msg))
+            except AgentExecutionError as exc:
+                observability.log(None, "ASK_TALON", "run_error", str(exc))
+                return self._json({"error": str(exc)}, 503)
         if p == "/kb":
             return self._json(rag.stats() | {"files": sorted(f.name for f in config.KNOWLEDGE_DIR.glob("*") if f.is_file())})
         if p == "/kb/search" and method == "POST":
@@ -137,13 +153,16 @@ class Handler(BaseHTTPRequestHandler):
             rag.index_static()
             return self._json(rag.stats())
         if p == "/samples" and method == "POST":
-            if db.q1("SELECT COUNT(*) n FROM candidates")["n"]:
-                return self._json({"error": "Data already exists. Reset first."}, 400)
-            threading.Thread(target=samples.load_samples, daemon=True).start()
+            try:
+                samples.start()
+            except ValueError as exc:
+                return self._json({"error": str(exc)}, 409)
             return self._json({"started": True})
         if p == "/reset" and method == "POST":
-            db.reset_db()
-            rag.index_static()
+            try:
+                samples.reset_portfolio()
+            except ValueError as exc:
+                return self._json({"error": str(exc)}, 409)
             return self._json({"ok": True})
         if p == "/jobs" and method == "POST":
             b = self._body()
@@ -154,6 +173,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(sorted(skills.SKILLS))
         if p == "/candidates" and method == "POST":
             b = self._body()
+            if settings.agentic() and b.get("autopilot"):
+                return self._json({"error": "Agentic mode requires human approvals; autopilot is disabled."}, 400)
             text = b.get("resume_text", "")
             if b.get("data"):
                 text = resume_io.extract_text(b.get("filename", "resume.txt"), base64.b64decode(b["data"]))
@@ -187,7 +208,28 @@ class Handler(BaseHTTPRequestHandler):
         if sub == "/run" and method == "POST":
             return self._json({"started": workflow.start(cid)})
         if sub == "/autopilot" and method == "POST":
+            if settings.agentic():
+                return self._json({"error": "Agentic mode requires human approvals; autopilot is disabled."}, 400)
             return self._json({"started": workflow.start(cid, demo=True)})
+        if sub == "/platform-prompt":
+            ag = qs.get("agent", [""])[0]
+            return self._json({"agent": ag, "prompt": reports.platform_prompt(cid, ag)})
+        if sub == "/platform-reply" and method == "POST":
+            b = self._body()
+            ag, text = b.get("agent", ""), (b.get("text") or "").strip()
+            res = db.memory_get(cid, ag, "result")
+            if not res or ag not in reports.PLATFORM_TASK or len(text) < 5:
+                return self._json({"error": "Nothing to attach (run the agent first and paste a reply)."}, 400)
+            try:
+                parsed = json.loads(text[text.index("{"):text.rindex("}") + 1])
+                text = parsed.get("summary", text) if isinstance(parsed, dict) else text
+            except Exception:
+                pass
+            res["summary"], res["used_llm"] = str(text)[:900], True
+            res["data"]["platform_reply"] = True
+            db.memory_set(cid, ag, "result", res)
+            observability.log(cid, ag, "platform_reply_pasted", "Reply from a platform agent attached")
+            return self._json({"ok": True})
         if sub == "/dossier":
             return self._send(200, reports.dossier_html(cid).encode(), "text/html; charset=utf-8")
         if sub == "/draft":

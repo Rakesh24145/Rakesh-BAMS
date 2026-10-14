@@ -29,7 +29,7 @@ class Omniview(BaseAgent):
     def run(self, cand, job):
         mem = db.memory_all(cand["id"])
         rec = mem.get("NORTHSTAR", {}).get("recommendation", {})
-        ready = mem.get("PRISM", {}).get("readiness", {})
+        ready = mem.get("PRISM", {}).get("readiness") or mem.get("NORTHSTAR", {}).get("readiness", {})
         report = {
             "candidate": cand["name"], "role": job["title"],
             "match_score": mem.get("ORIGIN", {}).get("score"),
@@ -44,7 +44,7 @@ class Omniview(BaseAgent):
         task = (f"Write an executive summary of this candidate report: {report}. "
                 f'Finish with {{"summary": "3 short factual sentences"}}.')
         final, _ = rt.react(cand["id"], self, task, make_tools(cand, job))
-        t = rt.clean_text((final or {}).get("summary"), 900)
+        t = rt.require_text(cand["id"], self, final, limit=900)
         text, used = (t, True) if t else (fallback, False)
         db.memory_set(cand["id"], self.name, "executive_report",
                       {"summary": text, **report})

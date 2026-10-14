@@ -1,6 +1,7 @@
 """SENTINEL - Integrity Agent: monitoring records, compliance, violations."""
 import re
 
+from .. import agent_runtime as rt
 from .. import config, db
 from .base import AgentResult, BaseAgent
 
@@ -40,6 +41,6 @@ class Sentinel(BaseAgent):
                        "violations": violations})
         summary = ("No integrity violations detected." if not violations
                    else "Possible violations: " + "; ".join(violations))
-        return AgentResult(summary, {"violations": violations,
+        return rt.review_result(self, cand, job, AgentResult(summary, {"violations": violations,
                                      "avg_seconds": round(avg, 1)},
-                           bool(violations), self.approver_role)
+                           bool(violations), self.approver_role))

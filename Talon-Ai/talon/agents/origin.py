@@ -2,7 +2,7 @@
 Rules compute the score. The LLM agent (if available) may use RAG to find extra
 evidence for skills the keyword match missed - those get only HALF credit."""
 from .. import agent_runtime as rt
-from .. import db, skills
+from .. import db, settings, skills
 from ..tools import make_tools
 from .base import AgentResult, BaseAgent
 
@@ -27,16 +27,30 @@ class Origin(BaseAgent):
                 f"Missing required skills: {missing}. For each missing skill, call "
                 f"search_resume to check if the resume shows real evidence. Finish "
                 f'with {{"inferred_skills": [skills with evidence], "summary": '
-                f'"2 factual sentences"}}.')
-        final, trace = rt.react(cand["id"], self, task, make_tools(cand, job))
+                f'"2 factual sentences", "skill_evidence": {{"skill": "exact resume quote"}}}}.')
+        final, trace = rt.react(cand["id"], self, task, make_tools(cand, job),
+                               required_tools=("search_resume",))
+        llm_text = rt.require_text(cand["id"], self, final)
         if final:
+            if settings.agentic() and (
+                    not isinstance(final.get("inferred_skills"), list) or
+                    not all(isinstance(s, str) for s in final["inferred_skills"])):
+                rt._fail(cand["id"], self, trace, "Invalid inferred_skills: a list of skill names is required.")
             claimed = [s for s in (final.get("inferred_skills") or []) if isinstance(s, str)]
+            if settings.agentic():
+                evidence = final.get("skill_evidence")
+                if not isinstance(evidence, dict) or any(
+                        s not in missing or not isinstance(evidence.get(s), str) or
+                        len(evidence[s].strip()) < 5 or
+                        evidence[s].strip().casefold() not in cand["resume_text"].casefold()
+                        for s in claimed):
+                    rt._fail(cand["id"], self, trace,
+                             "Inferred skills require exact supporting resume quotes and must be job gaps.")
             inferred = [s for s in claimed if s in missing]                # guardrail
             dropped = [s for s in claimed if s not in missing]
             if dropped:
                 trace.append({"guardrail": f"Dropped skills that are not on the missing list: {dropped}"})
                 rt._save(cand["id"], self, trace)
-            llm_text = rt.clean_text(final.get("summary"))
 
         req_cov = (len(m_req) + 0.5 * len(inferred)) / len(req) if req else 1.0
         nice_cov = len(m_nice) / len(nice) if nice else 0.0

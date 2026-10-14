@@ -3,7 +3,7 @@ Courses are RETRIEVED (RAG) from the learning catalog + your knowledge folder.""
 import re
 
 from .. import agent_runtime as rt
-from .. import db, rag, skills
+from .. import db, rag, settings, skills
 from ..tools import make_tools
 from .base import AgentResult, BaseAgent
 
@@ -41,15 +41,33 @@ class Athena(BaseAgent):
         gaps_nice = _order([s for s in job["nice"] if s not in origin])
         plan = [retrieve_course(s) for s in gaps_req + gaps_nice[:2]]
         hours = sum(p["hours"] for p in plan)
-        db.memory_set(cand["id"], self.name, "skill_gaps",
-                      {"required": gaps_req, "nice": gaps_nice})
-        db.memory_set(cand["id"], self.name, "plan", plan)
-
         fallback = (f"{len(plan)} learning item(s), about {hours} hours. Foundations "
                     "first, required skills before nice-to-have."
                     if plan else "No skill gaps found - no learning plan needed.")
         text, used = fallback, False
-        if plan:
+        if settings.agentic():
+            task = (f"Design a learning path for {job['title']}. Required gaps: {gaps_req}. "
+                    f"Optional gaps: {gaps_nice}. Use get_learning_resources and policy tools. "
+                    "Include every required gap exactly once, and at most two optional gaps. "
+                    "Choose the order based on prerequisites and candidate evidence. "
+                    'Finish with {"ordered_skills": ["skill", ...], "summary": "explain the plan"}. '
+                    "Use an empty list if there are no gaps.")
+            final, _ = rt.react(cand["id"], self, task, make_tools(cand, job),
+                                required_tools=("get_learning_resources",))
+            text = rt.require_text(cand["id"], self, final)
+            ordered = final.get("ordered_skills")
+            if (not isinstance(ordered, list) or
+                    not all(isinstance(s, str) for s in ordered) or
+                    len(ordered) != len(set(ordered)) or
+                    not set(gaps_req) <= set(ordered) or
+                    not set(ordered) <= set(gaps_req + gaps_nice) or
+                    len(set(ordered) - set(gaps_req)) > 2):
+                rt._fail(cand["id"], self, db.memory_get(cand["id"], self.name, "trace", []),
+                         "Invalid learning plan: cover all required gaps once and at most two optional gaps.")
+            plan = [retrieve_course(s) for s in ordered]
+            hours = sum(p["hours"] for p in plan)
+            used = True
+        elif plan:
             task = (f"Candidate for {job['title']} has this learning plan: "
                     f"{[(p['skill'], p['course'], p['hours']) for p in plan]}. Use "
                     f"search_knowledge (source docs) to check the learning guidance, "
@@ -58,5 +76,8 @@ class Athena(BaseAgent):
             t = rt.clean_text((final or {}).get("summary"))
             if t:
                 text, used = t + " " + fallback, True
+        db.memory_set(cand["id"], self.name, "skill_gaps",
+                      {"required": gaps_req, "nice": gaps_nice})
+        db.memory_set(cand["id"], self.name, "plan", plan)
         return AgentResult(text, {"gaps_required": gaps_req, "plan": plan,
                                   "total_hours": hours}, True, self.approver_role, used)

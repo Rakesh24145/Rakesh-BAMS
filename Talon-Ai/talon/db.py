@@ -71,6 +71,14 @@ def reset_db() -> None:
     init_db()
 
 
+def reset_portfolio() -> None:
+    """Clear portfolio records atomically; retain settings, usage and static knowledge."""
+    with conn() as c:
+        for table in ("approvals", "memory", "candidates", "jobs", "audit"):
+            c.execute(f"DELETE FROM {table}")
+        c.execute("DELETE FROM chunks WHERE source IN ('resume', 'jobs')")
+
+
 def q(sql: str, args: tuple = ()) -> list:
     with conn() as c:
         return [dict(r) for r in c.execute(sql, args).fetchall()]

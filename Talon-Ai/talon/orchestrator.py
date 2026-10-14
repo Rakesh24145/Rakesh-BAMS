@@ -1,5 +1,4 @@
 """TALON ORCHESTRATOR - core workflow functions with human approval gates.
-(In v2 the LangGraph graph in graph.py calls these functions; engine.py chooses.)
 
 Each candidate has a `stage`. The orchestrator runs the agent for that stage.
 If the agent asks for approval, the candidate WAITS (STOP) until a human decides.
@@ -7,11 +6,12 @@ Steps marked "human" need input from a person (candidate), not from an agent.
 """
 import json
 
-from . import db, observability, rag, supervisor
+from . import agent_runtime as rt
+from . import db, llm, observability, rag, settings, supervisor
 from .agents import AGENTS
 from .agents.apex import CODING_TASK
 
-PIPELINE = [
+FULL_PIPELINE = [
     ("ORIGIN", "agent"), ("GENESIS", "agent"), ("ATHENA", "agent"),
     ("LEARNING", "human"),                      # candidate logs course progress
     ("NOVA", "agent"), ("APEX", "agent"),
@@ -19,6 +19,10 @@ PIPELINE = [
     ("SENTINEL", "agent"), ("TITAN", "agent"), ("PRISM", "agent"),
     ("NORTHSTAR", "agent"), ("OMNIVIEW", "agent"),
 ]
+LITE_PIPELINE = [("ORIGIN", "agent"), ("ATHENA", "agent"), ("NORTHSTAR", "agent"),
+                 ("OMNIVIEW", "agent")]
+MODE = "full" if settings.get().get("mode") == "full" else "lite"   # set in Settings, restart to apply
+PIPELINE = FULL_PIPELINE if MODE == "full" else LITE_PIPELINE
 STEP_TYPE = dict(PIPELINE)
 STEP_IDS = [s for s, _ in PIPELINE]
 TERMINAL = ("DONE", "REJECTED")
@@ -112,10 +116,17 @@ def run_step(cid: int) -> dict:
         return {"status": "human_input_needed", "stage": stage}
     job = get_job(cand["job_id"])
     try:
+        if settings.agentic() and not llm.available():
+            raise rt.AgentExecutionError("AI is unavailable. Connect a model in Settings and retry.")
         res = AGENTS[stage].run(cand, job)
+        if settings.agentic() and not res.used_llm:
+            raise rt.AgentExecutionError(f"{stage} did not complete an AI-driven execution.")
+        extra = supervisor.extra_review(cid, stage, res, ROLES) if res.requires_approval else None
     except Exception as exc:                      # keep the app alive, log for ATLAS
         observability.log(cid, stage, "run_error", repr(exc))
-        return {"status": "error", "message": repr(exc)}
+        db.memory_set(cid, stage, "execution_error", {"message": str(exc), "at": db.now()})
+        return {"status": "error", "message": str(exc)}
+    db.run("DELETE FROM memory WHERE candidate_id=? AND agent=? AND key='execution_error'", (cid, stage))
     db.memory_set(cid, stage, "result", {
         "summary": res.summary, "data": res.data, "used_llm": res.used_llm})
     observability.log(cid, stage, "run_ok", res.summary)
@@ -124,7 +135,6 @@ def run_step(cid: int) -> dict:
                      "created) VALUES (?,?,?,?,?,?)",
                      (cid, stage, res.approver_role, res.summary, "pending", db.now()))
         observability.log(cid, stage, "approval_requested", res.approver_role)
-        extra = supervisor.extra_review(cid, stage, res, ROLES)
         if extra:                                   # the supervisor can only ADD review
             db.run("INSERT INTO approvals(candidate_id,agent,role,summary,status,"
                    "created) VALUES (?,?,?,?,?,?)",

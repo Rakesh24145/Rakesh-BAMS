@@ -26,6 +26,7 @@ function statusChip(r) {
   if (r.stage === "DONE") return r.hold ? `<span class="pill warn">On HOLD</span>` : `<span class="pill ok">Completed</span>`;
   if (r.stage === "REJECTED") return `<span class="pill bad">Closed</span>`;
   const w = r.waiting; if (!w) return `<span class="pill">Ready to run</span>`;
+  if (w.type === "error") return `<span class="pill bad">Agent paused: error</span>`;
   return w.type === "approval" ? `<span class="pill warn">Needs ${esc(w.roles.join(" + "))}</span>` : `<span class="pill ai">Waiting for candidate</span>`;
 }
 
@@ -36,7 +37,9 @@ function go(v) { S.view = v; renderNav(); renderView(); }
 function renderNav() {
   const k = S.st?.kpis; $("#nav").innerHTML = Object.entries(VIEWS).map(([id, [t, i]]) => `<button class="nav ${S.view === id ? "on" : ""}" onclick="go('${id}')">${ic(i)}${t.replace(" (RAG)", "")}${id === "approvals" && k?.pending ? `<span class="badge">${k.pending}</span>` : ""}</button>`).join("");
   $("#title").textContent = VIEWS[S.view][0];
-  const ai = S.st?.ai; $("#sidefoot").innerHTML = ai ? `<span class="dot ${ai.available ? "on" : ""}"></span><b>${ai.available ? "AI engine on" : "Rules mode"}</b><br>${ai.available ? esc(ai.provider + " / " + ai.model) : "No AI model connected. Everything still works."}<br><span style="opacity:.7">${ai.calls} AI calls &middot; ${ai.tokens} tokens</span>` : "";
+  const ai = S.st?.ai; $("#sidefoot").innerHTML = ai ? `<span class="dot ${ai.available ? "on" : ""}"></span><b>${ai.execution_mode === "agentic" ? "Agentic mode" : "Legacy mode"}</b><br>${ai.available ? esc(ai.provider + " / " + ai.model) : ai.execution_mode === "agentic" ? "Connect an AI model to run agents." : "Rules fallback enabled."}<br><span style="opacity:.7">${ai.calls} AI calls &middot; ${ai.tokens} tokens</span>` : "";
+  const demoButton = $("#offlineDemo"); demoButton.disabled = !!S.st?.offline_demo; demoButton.textContent = S.st?.offline_demo ? "OFFLINE SHOWCASE - simulated, no AI" : "Open offline showcase";
+  if (S.st?.offline_demo) $("#sidefoot").innerHTML = "<b>OFFLINE SHOWCASE</b><br>Rules and synthetic samples. No model calls.<br>Separate temporary data; live settings unchanged.";
   const sel = $("#persona"); if (S.st && !sel.options.length) { sel.innerHTML = S.st.roles.map(r => `<option ${r === S.persona ? "selected" : ""}>${r}</option>`).join(""); sel.onchange = () => { S.persona = sel.value; localStorage.persona = S.persona; renderView(); }; }
 }
 function renderView() {
@@ -61,7 +64,7 @@ function vHome() {
   const pend = []; // filled async below
   $("#content").innerHTML = `
   <div class="card hero"><div><h2>${new Date().getHours() < 12 ? "Good morning" : new Date().getHours() < 18 ? "Good afternoon" : "Good evening"}. Here is your talent pipeline.</h2><p>${esc(insight(k))}</p>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">${empty ? `<button class="btn w" onclick="loadDemo()">Load demo portfolio</button>` : `<button class="btn w" onclick="go('approvals')">Open approvals${k.pending ? " (" + k.pending + ")" : ""}</button>`}<button class="btn" onclick="addCandidate()">${ic("plus", 16)} Add candidate</button><button class="btn" onclick="openChat()">Ask TALON</button></div></div></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">${empty ? `<button class="btn w" onclick="loadDemo()">Load demo portfolio</button>` : `<button class="btn w" onclick="go('approvals')">Open approvals${k.pending ? " (" + k.pending + ")" : ""}</button><button class="btn" onclick="resetAll()">Reset portfolio</button>`}<button class="btn" onclick="addCandidate()">${ic("plus", 16)} Add candidate</button><button class="btn" onclick="openChat()">Ask TALON</button></div></div></div>
   <div class="grid g5" style="margin-bottom:16px">
     <div class="card kpi"><div class="l">Candidates</div><div class="n">${k.candidates}</div><div class="s">in the pipeline</div></div>
     <div class="card kpi ${k.pending ? "warn" : ""}"><div class="l">Waiting for a human</div><div class="n">${k.pending}</div><div class="s">${Object.entries(k.pending_by_role).map(([r, n]) => r + " " + n).join(" · ") || "nothing pending"}</div></div>
@@ -77,19 +80,36 @@ function vHome() {
         <div class="fact" style="display:block"><span>Human decisions logged with evidence</span><div style="font-size:24px;font-weight:700">${im.decisions}</div></div></div>
       <div style="color:var(--muted);font-size:11.5px;margin-top:8px">Effort estimate = agent outputs x typical manual minutes (resume screening ${im.assumptions.ORIGIN}, learning plan ${im.assumptions.ATHENA}, assessment design ${im.assumptions.APEX}, scoring review ${im.assumptions.TITAN}, report ${im.assumptions.OMNIVIEW}). These are assumptions, not measurements.</div></div>
     <div class="card"><h3>Gen AI at work<small>${s.ai.available ? esc(s.ai.provider + " / " + s.ai.model) : "AI model not connected"}</small></h3>
-      ${s.ai.available ? "" : `<div class="callout warn" style="padding:8px 12px">Rules mode: the Gen AI features below are off. <button class="btn sm p" style="margin-left:auto" onclick="go('settings')">Connect a model</button></div>`}
+      ${s.ai.available ? "" : `<div class="callout warn" style="padding:8px 12px">${s.ai.execution_mode === "agentic" ? "Agents are blocked until an AI model is connected." : "Legacy rules fallback is active."} <button class="btn sm p" style="margin-left:auto" onclick="go('settings')">Connect a model</button></div>`}
       <div class="row"><span class="k" style="width:190px">AI-written agent outputs</span><div class="bar"><i style="width:${im.agent_outputs ? im.ai_written / im.agent_outputs * 100 : 0}%"></i></div><span class="v" style="width:60px">${im.ai_written}/${im.agent_outputs}</span></div>
       <div class="row"><span class="k" style="width:190px">Agent tool calls (reasoning)</span><span class="v" style="margin-left:auto">${im.tool_calls}</span></div>
       <div class="row"><span class="k" style="width:190px">Supervisor escalations to a human</span><span class="v" style="margin-left:auto">${im.escalations}</span></div>
       <div class="row"><span class="k" style="width:190px">Questions answered by Ask TALON</span><span class="v" style="margin-left:auto">${im.chats}</span></div>
-      <div class="row"><span class="k" style="width:190px">AI calls / tokens</span><span class="v" style="margin-left:auto;width:auto">${s.ai.calls} / ${s.ai.tokens}</span></div></div></div>
+      <div class="row"><span class="k" style="width:190px">AI calls used / limit</span><span class="v" style="margin-left:auto;width:auto">${s.ai.calls} / ${s.ai.budget}</span></div>
+      <div class="row"><span class="k" style="width:190px">Estimated spend / your credit</span><span class="v" style="margin-left:auto;width:auto">$${s.ai.est_cost} / $${s.ai.credit}</span></div></div></div>
   <div class="grid g3" style="margin-bottom:16px">
     <div class="card"><h3>Pipeline by stage<small>${k.candidates} candidates</small></h3>${Object.entries(f).map(([p, n]) => `<div class="row"><span class="k">${p}</span><div class="bar"><i style="width:${n / max * 100}%"></i></div><span class="v">${n}</span></div>`).join("")}</div>
     <div class="card"><h3>Readiness mix</h3><div style="display:flex;gap:18px;align-items:center"><div class="donut" style="background:${tot ? `conic-gradient(#1b8a3a 0 ${a}%,#d99a00 ${a}% ${b}%,#c0392b ${b}% 100%)` : "var(--border)"}"><div><span><b>${tot}</b>assessed</span></div></div><div style="font-size:13px;line-height:2"><span class="pill ok">Ready ${lv["Ready"]}</span><br><span class="pill warn">Conditionally ready ${lv["Conditionally ready"]}</span><br><span class="pill bad">Not ready ${lv["Not ready"]}</span></div></div></div></div>
   <div class="grid g2"><div class="card"><h3>Top candidates<small>by readiness</small></h3><div class="list">${top.length ? top.map(r => `<div class="it" style="cursor:pointer" onclick="openCand(${r.id})">${av(r.name)}<div><div class="t">${esc(r.name)}</div><div class="m">${esc(r.job)} · ${statusChip(r)}</div></div><div class="r">${ring(r.readiness ?? r.match, 42)}</div></div>`).join("") : `<div class="empty">No scored candidates yet</div>`}</div></div>
     <div class="card"><h3>Live agent activity<small>updates as it happens</small></h3><div class="feed" id="feed">${S.feed.slice(0, 30).map(feedItem).join("") || `<div class="empty">Agent activity will appear here</div>`}</div></div></div>`;
 }
-async function loadDemo() { toast("Loading demo portfolio - agents are working..."); const r = await api("/samples", {}); if (r.error) toast(r.error); }
+async function openOfflineDemo() {
+  toast("Preparing isolated offline showcase...");
+  try {
+    const r = await api("/demo/offline", {});
+    if (r.error) return toast(r.error);
+    modal(`<h3>Offline showcase ready</h3><p>Six synthetic candidates are ready in a separate temporary database. This is a rules-based presentation, not live AI. Your main window and data are unchanged.</p><div class="acts"><button class="btn" onclick="closeModal()">Cancel</button><a class="btn p" href="${esc(r.url)}" target="_blank" rel="noopener noreferrer">Open showcase window</a></div><p>If your browser does not open the new window, copy this local address: <code>${esc(r.url)}</code></p>`);
+  } catch (error) {
+    toast("Could not open offline showcase: " + error.message);
+  }
+}
+async function loadDemo() {
+  if (S.st?.ai?.execution_mode === "agentic") {
+    return modal(`<h3>Choose a demo</h3><p>The offline showcase restores the presentation portfolio in a separate window, using rules and synthetic data. It leaves your live settings, keys and candidates unchanged.</p><p>AI samples use your configured model and budget in this window, and stop for human approval or model errors.</p><div class="acts"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn" onclick="closeModal();loadAISamples()">Load AI samples here</button><button class="btn p" onclick="closeModal();openOfflineDemo()">Open offline showcase</button></div>`);
+  }
+  return loadAISamples();
+}
+async function loadAISamples() { toast(S.st?.offline_demo ? "Loading offline synthetic portfolio..." : "Loading samples - agents will stop for approvals or errors."); const r = await api("/samples", {}); if (r.error) toast(r.error); soon(); }
 
 /* -------------------------------- PIPELINE ---------------------------------- */
 function vPipeline() {
@@ -115,6 +135,7 @@ function waitBanner(v) {
   const w = v.status.waiting; if (v.stage === "DONE") return v.recommendation?.hiring?.startsWith("HOLD") ? `<div class="callout warn"><b>HOLD</b> ${esc(v.recommendation.hiring)}</div>` : `<div class="callout ok"><b>Journey complete.</b> ${esc(v.decision?.decision || "")}</div>`;
   if (v.stage === "REJECTED") return `<div class="callout bad">This journey was closed by a human reviewer.</div>`;
   if (v.status.running) return `<div class="callout blue"><span class="spin"></span> Agents are working on this candidate right now...</div>`;
+  if (w?.type === "error") return `<div class="callout bad"><b>Agent paused</b> ${esc(w.message)}<button class="btn sm" style="margin-left:auto" onclick="runCase()">Retry</button></div>`;
   if (w?.type === "approval") return `<div class="callout warn"><b>STOP</b> ${esc(w.agent)} is waiting for <b>${esc(w.roles.join(" + "))}</b>.<button class="btn sm ok" style="margin-left:auto" onclick="go('approvals');closeDrawer()">Review</button></div>`;
   if (w?.type === "candidate") return `<div class="callout blue">Waiting for the candidate to complete: <b>${w.step === "LEARNING" ? "learning progress" : "the assessment"}</b>.<span style="margin-left:auto;display:flex;gap:6px"><button class="btn sm p" onclick="${w.step === "LEARNING" ? "learningModal()" : "assessModal()"}">Open as candidate</button><button class="btn sm" onclick="simulate()">Simulate</button></span></div>`;
   return `<div class="callout blue">Ready for the next step. <button class="btn sm p" style="margin-left:auto" onclick="runCase()">Run agents</button></div>`;
@@ -131,10 +152,11 @@ function tOverview(v) {
 }
 function tAgents(v) {
   return waitBanner(v) + v.agents.map(a => {
-    const st = { done: ["ok", "Done"], waiting: ["warn", "Waiting for human"], running: ["blue", "Working"], current: ["blue", "Next"], pending: ["", "Not started"], skipped: ["", "Skipped"] }[a.state];
+    const st = { done: ["ok", "Done"], error: ["bad", "Execution failed"], waiting: ["warn", "Waiting for human"], running: ["blue", "Working"], current: ["blue", "Next"], pending: ["", "Not started"], skipped: ["", "Skipped"] }[a.state];
     return `<div class="agent ${a.state === "pending" || a.state === "skipped" ? "pending" : ""}"><div class="ah"><div class="ic">${esc(a.id.slice(0, 2))}</div><div style="flex:1"><b>${esc(a.id)}</b> <span style="color:var(--muted)">${esc(a.title)}</span><div class="goal">Goal: ${esc(a.goal)}</div></div>${a.used_llm ? `<span class="pill ai">AI-written</span>` : ""}<span class="pill ${st[0]}">${st[1]}</span></div>
     ${a.summary ? `<div class="ab"><p>${esc(a.summary)}</p>
       ${a.trace.length ? `<details class="tr"><summary>Reasoning trace · ${a.trace.filter(t => t.action).length} tool call(s)${a.sources.length ? " · " + a.sources.length + " source(s)" : ""}</summary>${a.trace.map(t => t.action ? `<div class="call">${esc(t.thought || "")}\n&rarr; ${esc(t.action)}(${esc(JSON.stringify(t.args))})</div><div class="obs">${esc(t.observation)}</div>` : t.guardrail ? `<div class="callout bad" style="padding:6px 10px;margin:6px 0"><b>Guardrail</b> ${esc(t.guardrail)}</div>` : t.final ? `<div class="call">final answer: ${esc(JSON.stringify(t.final)).slice(0, 400)}</div>` : `<div class="obs">${esc(t.error || "")}</div>`).join("")}${a.sources.length ? `<div class="chips" style="margin-top:6px">${a.sources.map(s => `<span class="pill blue">${esc(s.source)}: ${esc(s.title)}</span>`).join("")}</div>` : ""}</details>` : ""}
+      ${["ORIGIN", "ATHENA", "NORTHSTAR", "OMNIVIEW"].includes(a.id) ? `<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" onclick="copyPlatform('${a.id}')">Copy prompt for my platform agent</button><button class="btn sm" onclick="pasteModal('${a.id}')">Paste platform agent reply</button>${a.data.platform_reply ? `<span class="pill ai">platform reply attached</span>` : ""}</div>` : ""}
       ${a.approvals.map(p => `<div style="margin-top:8px;font-size:12.5px"><span class="pill ${p.status === "approved" ? "ok" : p.status === "rejected" ? "bad" : "warn"}">${esc(p.role)}: ${esc(p.status)}</span> ${p.decided_by ? "by " + esc(p.decided_by) : ""} ${p.comment ? "- “" + esc(p.comment) + "”" : ""}</div>`).join("")}</div>` : ""}</div>`;
   }).join("");
 }
@@ -151,6 +173,9 @@ function tDocs(v) {
   <div style="color:var(--muted);font-size:12px;margin:8px 0">The dossier opens as a printable page - use Print &gt; Save as PDF.</div><textarea id="docout" rows="12" placeholder="Generated text appears here..."></textarea><div class="acts"><button class="btn sm" onclick="navigator.clipboard.writeText($('#docout').value);toast('Copied')">Copy</button></div></div>`;
 }
 const tAudit = v => `<div class="card"><h3>Audit trail<small>who did what, when</small></h3><table><tr><th>Time</th><th>Actor</th><th>Event</th><th>Detail</th></tr>${v.audit.map(a => `<tr><td style="white-space:nowrap">${esc(a.ts.slice(11))}</td><td>${esc(a.agent)}</td><td>${esc(a.event)}</td><td>${esc(a.detail)}</td></tr>`).join("")}</table></div>`;
+async function copyPlatform(agent) { const r = await api(`/candidates/${S.drawer}/platform-prompt?agent=${agent}`); try { await navigator.clipboard.writeText(r.prompt); toast("Prompt copied - paste it into your " + agent + " agent on the platform"); } catch (e) { modal(`<h3>Prompt for ${agent}</h3><textarea rows="12" id="pp">${esc(r.prompt)}</textarea><div class="acts"><button class="btn p" onclick="closeModal()">Close</button></div>`); } }
+function pasteModal(agent) { modal(`<h3>Paste the ${agent} agent's reply</h3><div style="color:var(--muted)">Paste what your platform agent answered (JSON or plain text). It replaces the summary shown for this agent and is marked as a platform reply.</div><textarea id="pr" rows="8"></textarea><div class="acts"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn p" onclick="sendPaste('${agent}')">Attach reply</button></div>`); }
+async function sendPaste(agent) { const r = await api(`/candidates/${S.drawer}/platform-reply`, { agent, text: $("#pr").value }); if (r.error) return toast(r.error); closeModal(); toast("Platform reply attached"); loadDrawer(); }
 async function runCase() { await api(`/candidates/${S.drawer}/run`, {}); soon(); }
 async function simulate() { await api(`/candidates/${S.drawer}/simulate`, {}); toast("Simulated candidate input - agents continue"); soon(); }
 async function draft(kind) { $("#docout").value = "Writing..."; $("#docout").value = (await api(`/candidates/${S.drawer}/draft?kind=${kind}`)).text; }
@@ -164,7 +189,7 @@ async function addCandidate() {
   modal(`<h3>Add a candidate</h3><div style="color:var(--muted)">Upload a resume (PDF or TXT) or paste the text. Use sample or synthetic data only.</div>
   <label>Job</label><select id="ac_job">${jobs.map(j => `<option value="${j.id}">${esc(j.title)}</option>`).join("")}</select>
   <label>Resume file</label><input type="file" id="ac_file" accept=".pdf,.txt"><label>...or paste resume text</label><textarea id="ac_text" rows="7"></textarea>
-  <label style="display:flex;gap:8px;align-items:center;font-weight:500"><input type="checkbox" id="ac_auto" style="width:auto"> Autopilot (demo): auto-approve every step</label>
+  <label style="display:flex;gap:8px;align-items:center;font-weight:500"><input type="checkbox" id="ac_auto" style="width:auto" ${S.st.ai.execution_mode === "agentic" ? "disabled" : ""}> Autopilot (legacy demo only): auto-approve every step</label>
   <div class="acts"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn p" onclick="submitCand()">Add and start agents</button></div>`);
 }
 async function submitCand() {
@@ -235,30 +260,73 @@ function kbUpload() { const i = document.createElement("input"); i.type = "file"
 
 /* -------------------------------- SETTINGS ---------------------------------- */
 async function vSettings() {
+  if (S.st?.offline_demo) {
+    $("#content").innerHTML = `<div class="card"><h3>Offline showcase</h3><p>This window uses rules and synthetic samples in a separate temporary database. No API key is needed and no AI model is called. Auto-approvals are labeled DEMO in the audit log.</p><p>Your live provider settings, credentials, candidates and knowledge files remain unchanged. Close this tab to return to the main window; the showcase server stops when the main application stops.</p><div class="acts"><button class="btn" onclick="loadDemo()">Load sample portfolio</button><button class="btn bad" onclick="resetAll()">Reset showcase data only</button></div></div>`;
+    return;
+  }
   const { settings: st, ai } = await api("/settings"), p = st.provider;
-  const E = [["none", "Rules mode", "No AI model. Everything works with rules, retrieval and templates."], ["ollama", "Ollama (local)", "Free, private, runs on your laptop."], ["github", "GitHub Models", "Free tier with your GitHub token (Copilot account)."], ["openai", "OpenAI-compatible API", "Groq, OpenRouter, Together, Azure OpenAI..."]];
+  const E = [["none", "No provider", "Agentic execution is blocked without a model. Rules require explicit legacy mode."], ["custom", "Capgemini Generative Engine / custom API", "Your organisation's approved platform or any HTTP API."], ["github", "GitHub Models", "GitHub token with Models permission required."], ["ollama", "Ollama (local)", "Free, private, runs on your laptop."], ["openai", "OpenAI-compatible API", "Groq, OpenRouter, Together, Azure OpenAI..."]];
+  const AG = [["ORIGIN", "Talent Discovery"], ["GENESIS", "Onboarding"], ["ATHENA", "Learning Intelligence"], ["NOVA", "Progress"], ["APEX", "Assessment"], ["SENTINEL", "Integrity"], ["TITAN", "Evaluation"], ["PRISM", "Readiness"], ["NORTHSTAR", "Recommendation"], ["OMNIVIEW", "Executive Intelligence"], ["SUPERVISOR", "Extra-reviewer check"], ["ASK_TALON", "Ask TALON chat"]];
+  const ids = st.custom_agent_ids || {};
   $("#content").innerHTML = `<div class="card" style="margin-bottom:16px"><h3>AI engine<small>${ai.available ? "connected: " + esc(ai.provider + " / " + ai.model) : "not connected"}</small></h3>
-  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">${E.map(([id, t, d]) => `<div class="eng ${p === id ? "on" : ""}" onclick="pickEngine('${id}')"><b>${t}</b><small>${d}</small></div>`).join("")}</div>
-  <div id="fields">${p === "ollama" ? `<label>Ollama URL</label><input id="s_ollama_url" value="${esc(st.ollama_url)}"><label>Chat model (ollama pull ${esc(st.ollama_model)})</label><input id="s_ollama_model" value="${esc(st.ollama_model)}"><label>Embedding model (ollama pull ${esc(st.embed_model)})</label><input id="s_embed_model" value="${esc(st.embed_model)}">` : ""}
-  ${p === "github" ? `<div class="callout blue" style="margin-top:12px">Create a <b>fine-grained personal access token</b> in GitHub with the <b>Models: Read</b> permission. A Copilot subscription alone is not an API key. The free tier is rate-limited, so the demo uses few AI calls.</div><label>GitHub token</label><input type="password" id="s_github_token" placeholder="${st.github_token ? "saved (hidden)" : "github_pat_..."}"><label>Model</label><div style="display:flex;gap:8px"><input id="s_github_model" value="${esc(st.github_model)}" list="gm"><datalist id="gm"></datalist><button class="btn" onclick="listModels()">List models</button></div>` : ""}
+  <label>Execution mode</label><select id="s_execution_mode"><option value="agentic" ${st.execution_mode === "agentic" ? "selected" : ""}>Agentic: model tool loop required, no rules fallback</option><option value="legacy" ${st.execution_mode === "legacy" ? "selected" : ""}>Legacy: rules with optional AI</option></select>
+  <p style="color:var(--muted)">Agentic mode enables every active agent and Ask TALON, always uses the tool loop, and pauses on errors. Human approvals cannot be auto-approved. The agent selection and single-call options below apply only in legacy mode.</p>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(190px,1fr))">${E.map(([id, t, d]) => `<div class="eng ${p === id ? "on" : ""}" onclick="pickEngine('${id}')"><b>${t}</b><small>${d}</small></div>`).join("")}</div>
+  <div id="fields">${p === "custom" ? `<div class="callout blue" style="margin-top:12px"><div>Get these from your platform: the <b>API URL</b>, an <b>API key</b>, and a sample request and reply (curl). The guide explains where to find them. Placeholders you can use: <b>{{system}} {{user}} {{model}} {{agent_id}} {{max_tokens}} {{key}}</b>.</div></div>
+    <label>API URL (may contain {{agent_id}})</label><input id="s_custom_url" value="${esc(st.custom_url)}" placeholder="https://your-platform/api/.../chat">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div><label>Auth header name</label><input id="s_custom_auth_header" value="${esc(st.custom_auth_header)}"></div><div><label>Auth header value ({{key}} = your key)</label><input id="s_custom_auth_value" value="${esc(st.custom_auth_value)}"></div></div>
+    <label>API key (stored only on this computer, in data/settings.json)</label><input type="password" id="s_custom_key" placeholder="${st.custom_key ? "saved (hidden)" : "paste your key"}">
+    <label>Model name (if the API needs one)</label><input id="s_custom_model" value="${esc(st.custom_model)}" placeholder="e.g. google.gemma-3-4b-it">
+    <label>Request body (JSON template)</label><textarea id="s_custom_body" rows="4" style="font-family:ui-monospace,Consolas,monospace;font-size:12px">${esc(st.custom_body)}</textarea>
+    <label>Where the answer text is in the reply (dot path, e.g. choices.0.message.content)</label><input id="s_custom_path" value="${esc(st.custom_path)}">
+    <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button class="btn sm" onclick="preset('openai')">Example: OpenAI-style chat</button><button class="btn sm" onclick="preset('simple')">Example: simple message API</button></div>
+    <label>Platform agent IDs (optional - only if each agent has its own endpoint/ID)</label><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">${AG.map(([a]) => `<div><small style="color:var(--muted)">${a}</small><input id="aid_${a}" value="${esc(ids[a] || "")}"></div>`).join("")}</div>` : ""}
+  ${p === "ollama" ? `<div class="callout blue" style="margin-top:12px"><div><b>No API key required.</b> Ollama runs an open-source model on your computer. Install it from <a href="https://ollama.com/download/windows" target="_blank" rel="noopener noreferrer">ollama.com</a>, then run <code>ollama pull qwen2.5:3b</code> in PowerShell. Start Ollama (or run <code>ollama serve</code>), Save, then Test connection. The model download requires internet; local inference does not. CPU execution can be slow.</div></div><label>Ollama URL</label><input id="s_ollama_url" value="${esc(st.ollama_url)}"><label>Chat model (ollama pull ${esc(st.ollama_model)})</label><input id="s_ollama_model" value="${esc(st.ollama_model)}"><label>Embedding model (optional; leave blank for built-in local retrieval)</label><input id="s_embed_model" value="${esc(st.embed_model)}"><p style="color:var(--muted)">Qwen2.5 3B is a lightweight starting point. A 7B model may follow complex agent instructions more reliably but needs more memory. Local Ollama has no API usage fees; the call budget still limits work, and the ledger's cost is only a cloud-equivalent estimate.</p>` : ""}
+  ${p === "github" ? `<div class="callout blue" style="margin-top:12px"><div>Create a <b>fine-grained personal access token</b> in GitHub with the <b>Models: Read</b> permission. A Copilot subscription alone is not an API key. The free tier is rate-limited.</div></div><label>GitHub token</label><input type="password" id="s_github_token" placeholder="${st.github_token ? "saved (hidden)" : "github_pat_..."}"><label>Model</label><div style="display:flex;gap:8px"><input id="s_github_model" value="${esc(st.github_model)}" list="gm"><datalist id="gm"></datalist><button class="btn" onclick="listModels()">List models</button></div>` : ""}
   ${p === "openai" ? `<label>Base URL</label><input id="s_openai_base" value="${esc(st.openai_base)}"><label>API key</label><input type="password" id="s_openai_key" placeholder="${st.openai_key ? "saved (hidden)" : "paste key"}"><label>Model</label><input id="s_openai_model" value="${esc(st.openai_model)}">` : ""}</div>
-  <label>Demo pace: seconds of visible "thinking" per agent in Rules mode</label><input id="s_demo_pace" value="${st.demo_pace}" style="width:120px">
+  <h3 style="margin-top:18px">Credit protection<small>so a small credit lasts</small></h3>
+  <div class="chips" style="margin-bottom:8px">${AG.map(([id, t]) => `<label style="display:inline-flex;gap:6px;align-items:center;margin:0;font-weight:500;color:var(--text);background:var(--surface2);border:1px solid var(--border);border-radius:99px;padding:4px 10px"><input type="checkbox" class="aiag" value="${id}" style="width:auto" ${(st.ai_agents || []).includes(id) ? "checked" : ""}> ${id} <span style="color:var(--muted);font-weight:400">${t}</span></label>`).join("")}</div>
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px"><div><label>Max AI calls</label><input id="s_ai_call_budget" value="${st.ai_call_budget}"></div><div><label>Your credit (USD)</label><input id="s_credit_usd" value="${st.credit_usd}"></div><div><label>Price per 1,000 tokens (USD)</label><input id="s_price_per_1k" value="${st.price_per_1k}"></div><div><label>One call per agent?</label><select id="s_agent_mode">${["auto", "single", "loop"].map(m => `<option ${st.agent_mode === m ? "selected" : ""}>${m}</option>`).join("")}</select></div></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div><label>Agents: lite = 4 agents (demo), full = 10 (restart the app after changing)</label><select id="s_mode"><option ${st.mode === "lite" ? "selected" : ""}>lite</option><option ${st.mode === "full" ? "selected" : ""}>full</option></select></div><div><label>Demo pace (seconds of visible "thinking" in Rules mode)</label><input id="s_demo_pace" value="${st.demo_pace}"></div></div>
   <div class="acts"><span id="testres" style="margin-right:auto;align-self:center;color:var(--muted)">${esc(ai.last_error)}</span><button class="btn" onclick="testAI()">Test connection</button><button class="btn p" onclick="saveSettings()">Save</button></div></div>
-  <div class="card"><h3>Data</h3><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" onclick="loadDemo()">Load demo portfolio</button><button class="btn bad" onclick="resetAll()">Reset all data</button></div><p style="color:var(--muted)">Everything is stored in the data folder on this computer. Use sample or synthetic data only.</p></div>`;
+  <div class="card"><h3>Data</h3><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" onclick="loadDemo()">Load demo portfolio</button><button class="btn bad" onclick="resetAll()">Reset portfolio (keep connections)</button></div><p style="color:var(--muted)">Reset clears portfolio records only. API connections, keys, settings, knowledge documents and usage history are preserved. Use sample or synthetic data only.</p></div>`;
   S.pickedEngine = p;
 }
-function pickEngine(id) { S.pickedEngine = id; api("/settings", { provider: id }).then(vSettings); }
-async function saveSettings() { const b = { provider: S.pickedEngine }; document.querySelectorAll("[id^=s_]").forEach(i => { const k = i.id.slice(2); b[k] = k === "demo_pace" ? parseFloat(i.value) || 0.8 : i.value; }); await api("/settings", b); toast("Saved"); refresh(); vSettings(); }
+const PRESETS = {
+  openai: ['{"model": "{{model}}", "messages": [{"role": "system", "content": "{{system}}"}, {"role": "user", "content": "{{user}}"}], "temperature": 0.2, "max_tokens": {{max_tokens}}}', "choices.0.message.content"],
+  simple: ['{"agentId": "{{agent_id}}", "message": "{{system}}\\n\\n{{user}}"}', "response"]
+};
+function preset(k) { $("#s_custom_body").value = PRESETS[k][0]; $("#s_custom_path").value = PRESETS[k][1]; }
+function pickEngine(id) { S.pickedEngine = id; api("/settings", { provider: id }).then(() => { soon(); vSettings(); }); }
+async function saveSettings() {
+  const b = { provider: S.pickedEngine }, num = ["demo_pace", "credit_usd", "price_per_1k"];
+  document.querySelectorAll("[id^=s_]").forEach(i => { const k = i.id.slice(2); b[k] = num.includes(k) ? (parseFloat(i.value) || 0) : k === "ai_call_budget" ? (parseInt(i.value) || 150) : i.value; });
+  b.ai_agents = [...document.querySelectorAll(".aiag:checked")].map(i => i.value);
+  const ids = {}; document.querySelectorAll("[id^=aid_]").forEach(i => { if (i.value.trim()) ids[i.id.slice(4)] = i.value.trim(); }); if (document.querySelector("[id^=aid_]")) b.custom_agent_ids = ids;
+  await api("/settings", b); toast("Saved"); refresh(); vSettings();
+}
 async function testAI() { await saveSettings(); $("#testres")?.replaceChildren("Testing..."); const r = await api("/settings/test", {}); toast(r.message); vSettings().then(() => { const e = $("#testres"); if (e) e.textContent = r.message; }); }
 async function listModels() { const r = await api("/settings/github-models"); $("#gm").innerHTML = r.models.map(m => `<option>${esc(m)}</option>`).join(""); toast(r.models.length ? r.models.length + " models found" : (r.error || "No models returned - check the token")); }
-async function resetAll() { if (!confirm("Delete ALL candidates and data?")) return; await api("/reset", {}); S.feed = []; toast("Reset"); refresh(); }
+async function resetAll() {
+  if (!confirm("Reset portfolio? This deletes candidates, jobs, results, approvals and portfolio activity. Your existing API connection, key, settings, knowledge documents and usage history stay unchanged.")) return;
+  try {
+    const r = await api("/reset", {});
+    if (r.error || !r.ok) return toast(r.error || "Portfolio reset failed.");
+    closeDrawer(); closeChat(); closeModal();
+    S.feed = []; S.chat = []; S.comments = {}; S.view = "home";
+    await refresh();
+    toast("Portfolio reset. Click Load demo portfolio to start again. Connections unchanged.");
+  } catch (error) {
+    toast("Portfolio reset failed: " + error.message);
+  }
+}
 
 /* --------------------------------- CHAT ------------------------------------- */
-const SUG = ["Who is ready for hire?", "What is waiting for approval?", "Which candidates have risks or holds?", "Summarize Aisha", "Compare Priya and Sofia", "What does our policy say about integrity flags?"];
+const SUG = ["Who is ready for hire?", "What is waiting for approval?", "Which candidates are on hold and why?", "Summarize Aisha", "Compare Priya and Sofia", "What does our policy say about missing experience?"];
 function openChat() { $("#chat").classList.add("on"); $("#veil").classList.add("on"); if (!S.chat.length) S.chat.push({ r: "a", t: "Hi, I am TALON. I answer from the live talent data and your policy documents, and I show which tools I used.", s: [] }); drawChat(); $("#chatin").focus(); }
 function closeChat() { $("#chat").classList.remove("on"); if (!S.drawer) $("#veil").classList.remove("on"); }
-function drawChat() { $("#msgs").innerHTML = S.chat.map(m => `<div class="m ${m.r}">${m.r === "a" ? md(m.t) : esc(m.t)}${m.s?.length ? `<small>Tools: ${esc(m.s.join(", "))} · ${m.llm ? "answered by AI model" : "answered by built-in rules"}</small>` : ""}</div>`).join("") + (S.busy ? `<div class="m a"><span class="spin"></span> thinking...</div>` : ""); $("#msgs").scrollTop = 1e9; $("#sug").innerHTML = S.chat.length < 3 ? SUG.map(s => `<button onclick="ask('${s}')">${s}</button>`).join("") : ""; $("#chatmode").textContent = S.st?.ai?.available ? "AI model + data tools" : "Built-in rules + data tools"; }
-async function ask(q) { q = (q || $("#chatin").value).trim(); if (!q) return; $("#chatin").value = ""; S.chat.push({ r: "u", t: q }); S.busy = true; drawChat(); const r = await api("/chat", { message: q }); S.busy = false; S.chat.push({ r: "a", t: r.answer, s: r.steps, llm: r.used_llm }); drawChat(); }
+function drawChat() { $("#msgs").innerHTML = S.chat.map(m => `<div class="m ${m.r}">${m.r === "a" ? md(m.t) : esc(m.t)}${m.s?.length ? `<small>Tools: ${esc(m.s.join(", "))} · ${m.llm ? "answered by AI model" : "answered by built-in rules"}</small>` : ""}</div>`).join("") + (S.busy ? `<div class="m a"><span class="spin"></span> thinking...</div>` : ""); $("#msgs").scrollTop = 1e9; $("#sug").innerHTML = S.chat.length < 3 ? SUG.map(s => `<button onclick="ask('${s}')">${s}</button>`).join("") : ""; $("#chatmode").textContent = S.st?.ai?.execution_mode === "agentic" ? "Agentic AI + data tools" : S.st?.ai?.available ? "AI model + data tools" : "Built-in rules + data tools"; }
+async function ask(q) { q = (q || $("#chatin").value).trim(); if (!q) return; $("#chatin").value = ""; S.chat.push({ r: "u", t: q }); S.busy = true; drawChat(); const r = await api("/chat", { message: q }); S.busy = false; S.chat.push({ r: "a", t: r.error ? "Agent error: " + r.error : r.answer, s: r.steps, llm: r.used_llm }); drawChat(); }
 
 /* --------------------------------- boot ------------------------------------- */
 $("#veil").onclick = () => { closeDrawer(); closeChat(); };

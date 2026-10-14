@@ -1,7 +1,7 @@
 """ATLAS (monitoring / audit) and LEDGER (token + cost tracking)."""
 from datetime import datetime
 
-from . import config, db
+from . import config, db, settings
 
 AGENT_NAMES = ["ORIGIN", "GENESIS", "ATHENA", "NOVA", "APEX",
                "SENTINEL", "TITAN", "PRISM", "NORTHSTAR", "OMNIVIEW"]
@@ -48,7 +48,7 @@ def recent_audit(limit: int = 100) -> list:
 
 # ------------------------------- LEDGER ------------------------------------
 def log_llm(agent, model, prompt_tokens, completion_tokens, latency_ms) -> None:
-    cost = (prompt_tokens + completion_tokens) / 1000 * config.EST_CLOUD_COST_PER_1K_TOKENS
+    cost = (prompt_tokens + completion_tokens) / 1000 * float(settings.get().get("price_per_1k", 0.002))
     db.run(
         "INSERT INTO ledger(ts,agent,model,prompt_tokens,completion_tokens,"
         "est_cost,latency_ms) VALUES (?,?,?,?,?,?,?)",

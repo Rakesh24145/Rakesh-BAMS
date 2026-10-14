@@ -16,3 +16,5 @@ photo as evidence.
 
 Rule 5. Explain every recommendation in plain language so the candidate and the
 approver can understand it.
+
+Rule 6. If the resume does not state the candidate's years of experience, the hiring recommendation must be put on HOLD until a recruiter confirms the experience.

@@ -1,5 +1,33 @@
 # TALON AI - Agent specification cards
 
+Two modes: LITE (default) runs ORIGIN, ATHENA, NORTHSTAR, OMNIVIEW. FULL runs all ten agents (Settings > Agents: full, then restart).
+
+## Execution contract
+
+Agentic execution is the default and requires a connected model. Every active stage uses the
+model-driven action/observation/final loop, with up to six tool calls and a final response.
+Model failures and invalid output stop the stage; they do not create approvals or advance it.
+The Settings execution selector explicitly restores the legacy behavior described below.
+
+- ORIGIN must search the resume; inferred skills require exact resume quotes and earn half credit.
+- ATHENA retrieves courses and returns `ordered_skills` plus `summary`. All required gaps must
+  appear once; up to two optional gaps are permitted. Catalog records supply course names and hours.
+- APEX retrieves the curated question bank and returns `question_ids` plus `summary`.
+  IDs must be distinct, cover every available bank skill and contain at most ten questions.
+- GENESIS, NOVA, SENTINEL and PRISM must retrieve `get_stage_evidence`, then return `summary`
+  and boolean `review_required`. AI can add review, never remove a mandatory review.
+- TITAN, NORTHSTAR and OMNIVIEW interpret factual measurements and policy using tools.
+  NORTHSTAR must retrieve policy. Objective scores, readiness thresholds and HOLDs remain enforced.
+- SUPERVISOR uses its own evidence tool loop and may only add an allowed human reviewer.
+- Ask TALON uses data tools and a validated `answer`; errors are returned explicitly.
+
+All candidate agents can retrieve candidate context, resume passages, job requirements,
+policy/framework documents and learning resources. Human approvals cannot be auto-approved
+in Agentic mode. Routing remains fixed rather than model-selected.
+
+The cards below describe deterministic safeguards and **legacy-mode** behavior. Statements
+such as "pure rules" or "LLM only writes guidance" do not describe Agentic execution.
+
 ## SUPERVISOR + WORKFLOW RUNNER
 Files: talon/supervisor.py, talon/workflow.py, talon/orchestrator.py
 
@@ -119,7 +147,7 @@ File: talon/agents/northstar.py
 - **Goal:** Turn evidence into hire, deploy or upskill calls.
 - **Reads:** PRISM, TITAN, SENTINEL, knowledge base (hiring policy).
 - **Tools the LLM may call:** search_knowledge, search_resume, get_job_requirements.
-- **Rule-based logic (code):** Ready -> hire; Conditionally ready -> hire with upskilling plan; Not ready -> do not proceed. POLICY RULE 2 IS ENFORCED IN CODE: if integrity flags exist, the recommendation becomes HOLD. Deployment = strongest competency area. Upskilling = skills under 70%. Policy passages are retrieved by RAG and attached as evidence.
+- **Rule-based logic (code):** Ready -> hire; Conditionally ready -> hire with upskilling plan; Not ready -> do not proceed. In LITE mode (4 agents) readiness = 60% match score + 40% learning ease (100 minus 2 points per planned hour); in FULL mode it comes from PRISM. POLICY RULES ARE ENFORCED IN CODE: integrity flags (full mode) or an unstated years-of-experience (rule 6) turn the recommendation into HOLD. Deployment = strongest competency area. Upskilling = skills under 70%. Policy passages are retrieved by RAG and attached as evidence.
 - **LLM task prompt:** Explain to an HR approver this recommendation: {hire}. Readiness {readiness}. Integrity flags: {flags}. Call search_knowledge (source docs) to find the relevant policy, then finish with {"summary": "2 neutral sentences citing the policy; remind that a human decides"}.
 - **Guardrails:** Policy as code (HOLD rule); final decision is always a human's.
 - **Memory written:** NORTHSTAR: recommendation, result, trace. After approval: ORCHESTRATOR.decision.

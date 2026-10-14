@@ -1,4 +1,5 @@
 """NOVA - Learning Progress Agent: progress, engagement, analytics."""
+from .. import agent_runtime as rt
 from .. import db
 from .base import AgentResult, BaseAgent
 
@@ -26,7 +27,7 @@ class Nova(BaseAgent):
                       {"completion_pct": completion, "hours_done": done_hours})
         summary = (f"Learning completion {completion}% ({done_hours} h done), "
                    f"engagement {engagement}." + (" AT RISK - manager review." if at_risk else ""))
-        return AgentResult(summary, {"completion_pct": completion,
+        return rt.review_result(self, cand, job, AgentResult(summary, {"completion_pct": completion,
                                      "engagement": engagement, "at_risk": at_risk,
                                      "hours_done": done_hours},
-                           at_risk, self.approver_role)
+                           at_risk, self.approver_role))

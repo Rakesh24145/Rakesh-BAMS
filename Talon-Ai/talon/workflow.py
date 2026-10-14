@@ -13,15 +13,23 @@ _locks: dict = {}
 _running: set = set()
 _guard = threading.Lock()
 
-# Used by the "Workflow map" page
-NODES = [
-    ("ORIGIN", "Talent discovery", "agent"), ("GENESIS", "Onboarding", "agent"),
-    ("ATHENA", "Learning plan", "agent"), ("LEARNING", "Candidate learns", "human"),
-    ("NOVA", "Progress", "agent"), ("APEX", "Assessment design", "agent"),
-    ("ASSESSMENT", "Candidate test", "human"), ("SENTINEL", "Integrity", "agent"),
-    ("TITAN", "Scoring", "agent"), ("PRISM", "Readiness", "agent"),
-    ("NORTHSTAR", "Recommendation", "agent"), ("OMNIVIEW", "Executive report", "agent"),
-]
+
+def reset_portfolio() -> None:
+    with _guard:
+        if _running:
+            raise ValueError("Agents are still working. Wait for them to pause before resetting the portfolio.")
+        db.reset_portfolio()
+        _locks.clear()
+
+TITLES = {"ORIGIN": "Talent discovery", "GENESIS": "Onboarding", "ATHENA": "Learning plan",
+          "LEARNING": "Candidate learns", "NOVA": "Progress", "APEX": "Assessment design",
+          "ASSESSMENT": "Candidate test", "SENTINEL": "Integrity", "TITAN": "Scoring",
+          "PRISM": "Readiness", "NORTHSTAR": "Recommendation", "OMNIVIEW": "Executive report"}
+
+
+def nodes() -> list:
+    """Steps of the active pipeline (used by the Workflow map page)."""
+    return [(i, TITLES[i], t) for i, t in orch.PIPELINE]
 
 
 def is_running(cid: int) -> bool:
@@ -41,6 +49,10 @@ def status(cid: int) -> dict:
                           "approval_ids": [p["id"] for p in pend], "agent": pend[0]["agent"]}
     elif orch.STEP_TYPE.get(stage) == "human":
         out["waiting"] = {"type": "candidate", "step": stage}
+    else:
+        error = db.memory_get(cid, stage, "execution_error")
+        if error:
+            out["waiting"] = {"type": "error", "message": error["message"], "step": stage}
     return out
 
 
@@ -51,11 +63,14 @@ def _pace():
 
 
 def _run(cid: int, demo: bool, stop_at: str = None) -> None:
-    lock = _locks.setdefault(cid, threading.Lock())
-    if not lock.acquire(blocking=False):
-        return
-    try:
+    if demo and settings.agentic():
+        raise ValueError("Demo autopilot is disabled in agentic mode; human approvals are required.")
+    with _guard:
+        lock = _locks.setdefault(cid, threading.Lock())
+        if not lock.acquire(blocking=False):
+            return
         _running.add(cid)
+    try:
         for _ in range(80):
             orch.maybe_skip(cid)
             cand = orch.get_candidate(cid)
@@ -85,16 +100,24 @@ def _run(cid: int, demo: bool, stop_at: str = None) -> None:
     except Exception as exc:                       # never kill the server thread
         observability.log(cid, "ORCHESTRATOR", "run_error", repr(exc))
     finally:
-        _running.discard(cid)
         observability.log(cid, "ORCHESTRATOR", "case_paused", orch.get_candidate(cid)["stage"])
         lock.release()
+        with _guard:
+            _running.discard(cid)
 
 
 def start(cid: int, demo: bool = False) -> bool:
+    if demo and settings.agentic():
+        raise ValueError("Demo autopilot is disabled in agentic mode; human approvals are required.")
     with _guard:
         if cid in _running:
             return False
-        threading.Thread(target=_run, args=(cid, demo), daemon=True).start()
+        _running.add(cid)
+        try:
+            threading.Thread(target=_run, args=(cid, demo), daemon=True).start()
+        except RuntimeError:
+            _running.discard(cid)
+            raise
     return True
 
 

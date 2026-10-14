@@ -70,7 +70,7 @@ class Titan(BaseAgent):
                 f"search_knowledge (source docs) for the proficiency levels. Finish "
                 f'with {{"summary": "2 neutral sentences, no hiring advice"}}.')
         final, _ = rt.react(cand["id"], self, task, make_tools(cand, job))
-        llm_text = rt.clean_text((final or {}).get("summary"))
+        llm_text = rt.require_text(cand["id"], self, final)
         text, used = (llm_text + " " + fallback, True) if llm_text else (fallback, False)
         db.memory_set(cand["id"], self.name, "evaluation_result", text)
         return AgentResult(text, {"objective": objective, "coding": coding,

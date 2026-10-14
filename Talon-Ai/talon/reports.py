@@ -92,9 +92,33 @@ def draft_message(cid: int, kind: str = "feedback") -> str:
                 f"Your strengths: {', '.join(strong) or 'a solid foundation'}. To grow further we suggest: "
                 f"{', '.join(weak) or 'continue building on your current skills'}. A learning plan with free "
                 "resources is available.\n\nBest regards,\nTalent Acquisition Team")
-    if llm.available():
+    if llm.available() and llm.enabled_for("OMNIVIEW"):
         out = llm.chat_json("OMNIVIEW", 'Polish this message to be warm, clear and concise. Keep every fact. '
                             'Reply JSON {"text": "..."}', text, 500)
         if out and isinstance(out.get("text"), str) and 40 < len(out["text"]) < 2500:
             return out["text"]
     return text
+
+
+PLATFORM_TASK = {
+    "ORIGIN": 'Write 2 factual sentences on how well this candidate fits the job. Reply JSON {"summary": "..."}.',
+    "ATHENA": 'Write 2 encouraging, practical sentences of career guidance based on the learning plan. Reply JSON {"summary": "..."}.',
+    "NORTHSTAR": 'Write 2 neutral sentences explaining the recommendation to an HR approver, cite the relevant policy, and remind them a human decides. Reply JSON {"summary": "..."}.',
+    "OMNIVIEW": 'Write a 3-sentence executive summary. Reply JSON {"summary": "..."}.'}
+
+
+def platform_prompt(cid: int, agent: str) -> str:
+    """Text to paste into an agent you built on a hosted platform (no API needed)."""
+    from . import rag
+    v = views.case_view(cid)
+    a = next((x for x in v["agents"] if x["id"] == agent), None)
+    if not a or agent not in PLATFORM_TASK:
+        return ""
+    query = {"ORIGIN": "skills experience " + " ".join(v["job"]["required"]), "ATHENA": "learning path guidance foundations",
+             "NORTHSTAR": "hiring recommendation policy integrity flag", "OMNIVIEW": "competency framework proficiency"}[agent]
+    hits = rag.search(query, k=2, source="resume" if agent == "ORIGIN" else "docs", ref=cid if agent == "ORIGIN" else None)
+    know = "\n".join(f"- {h['text'][:350]}" for h in hits) or "(none)"
+    import json as _j
+    return (f"TASK: {PLATFORM_TASK[agent]}\n\nJOB: {v['job']['title']} (required: {', '.join(v['job']['required'])})\n"
+            f"CANDIDATE: {v['name']}\nDATA: {_j.dumps(a['data'], default=str)[:1500]}\n\nKNOWLEDGE:\n{know}\n\n"
+            "Use only the DATA and KNOWLEDGE above. Reply with ONE JSON object only.")

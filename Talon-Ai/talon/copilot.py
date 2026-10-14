@@ -5,7 +5,7 @@ import json
 import re
 
 from . import agent_runtime as rt
-from . import db, llm, rag, reports, views
+from . import db, llm, rag, reports, settings, views
 
 
 class _Agent:
@@ -176,7 +176,24 @@ def ask(message: str) -> dict:
     message = (message or "").strip()[:600]
     if not message:
         return {"answer": "Ask me about candidates, approvals, risks or policy.", "steps": [], "used_llm": False}
-    if llm.available():
+    if settings.agentic():
+        final, trace = rt.react(
+            0, _Agent(), f"A leader asks: {message}\nUse data tools to verify facts. "
+            'Finish with {"answer": "short factual answer using **bold** and - bullets"}.',
+            TOOLS)
+        answer = rt.require_text(0, _Agent(), final, key="answer", limit=2499)
+        return {"answer": answer, "steps": [t["action"] for t in trace if t.get("action")],
+                "used_llm": True}
+    if llm.available() and llm.enabled_for("ASK_TALON") and llm.single_shot():
+        facts, steps = _rules(message)                    # tools run in code, the model words the answer
+        out = llm.chat_json("ASK_TALON", "You are TALON, a talent copilot. Use ONLY the facts given. "
+                            'Reply JSON {"answer": "short answer for a leader, **bold** names, - bullets"}',
+                            f"Question: {message}\nFacts:\n{facts}", 400)
+        ans = (out or {}).get("answer")
+        if isinstance(ans, str) and 5 < len(ans) < 2500:
+            return {"answer": ans, "steps": steps, "used_llm": True}
+        return {"answer": facts, "steps": steps, "used_llm": False}
+    if llm.available() and llm.enabled_for("ASK_TALON"):
         final, trace = rt.react(0, _Agent(), f"A leader asks: {message}\nUse tools to find facts, then finish "
                                 f'with {{"answer": "short answer using **bold** and - bullets"}}. Never invent data.',
                                 TOOLS, max_steps=4)

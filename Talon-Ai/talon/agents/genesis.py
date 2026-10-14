@@ -1,6 +1,7 @@
 """GENESIS - Onboarding Agent: registration + (simulated) identity validation."""
 import re
 
+from .. import agent_runtime as rt
 from .. import db
 from .base import AgentResult, BaseAgent
 
@@ -31,5 +32,6 @@ class Genesis(BaseAgent):
         summary = ("Profile verified (simulated checks: name, email format, resume "
                    "length, duplicates).") if not issues else \
             "Needs human review: " + "; ".join(issues)
-        return AgentResult(summary, {"status": status, "issues": issues},
-                           bool(issues), self.approver_role)
+        return rt.review_result(self, cand, job,
+                                AgentResult(summary, {"status": status, "issues": issues},
+                                            bool(issues), self.approver_role))

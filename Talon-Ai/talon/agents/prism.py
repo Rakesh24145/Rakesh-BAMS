@@ -1,4 +1,5 @@
 """PRISM - Readiness Intelligence Agent: strengths, skill map, readiness."""
+from .. import agent_runtime as rt
 from .. import db, skills
 from .base import AgentResult, BaseAgent
 
@@ -34,7 +35,7 @@ class Prism(BaseAgent):
         summary = (f"Readiness {readiness}/100 - {level}. Strengths: "
                    f"{', '.join(strengths) or 'none yet'}. To improve: "
                    f"{', '.join(weak) or 'none'}.")
-        return AgentResult(summary, {"readiness": readiness, "level": level,
+        return rt.review_result(self, cand, job, AgentResult(summary, {"readiness": readiness, "level": level,
                                      "strengths": strengths, "weak": weak,
                                      "competency": competency},
-                           True, self.approver_role)
+                           True, self.approver_role))
